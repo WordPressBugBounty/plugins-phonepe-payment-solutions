@@ -1,11 +1,11 @@
 === PhonePe Payment Solutions === 
 Contributors: PhonePe Team
 Tags: PhonePe, PhonePe Payments, PayWithPhonePe, PhonePe WooCommerce, PhonePe Plugin, PhonePe Payment Gateway
-Requires PHP: 5.6 or later
+Requires PHP: 8.2 or later
 Plugin Name: PhonePe Payment Solutions
 Authors: PhonePe
-Tested up to: 6.4
-Stable tag: 2.0.11
+Tested up to: 6.7
+Stable tag: 3.0.1
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 
@@ -66,6 +66,9 @@ Your PhonePe payment gateway is enabled. Now you can accept payment through Phon
 In case of any issues with integration, please [get in touch](mailto:merchant-integration@phonepe.com).
 
 == Changelog ==
+
+= Version 3.0.1 =
+* Added support for V2 of the Payment Gateway APIs from PhonePe, introducing multiple new features such as payment retries and token-based security.
 
 = Version 2.0.11 =
 * Ensured seamless rendering of PhonePe Payment Solutions within WooCommerce's new wc block-based checkout, resolving issues that rendering PhonePe PG in payment options. Enhance your customers' checkout experience with this compatibility update.
