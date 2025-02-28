@@ -4,9 +4,9 @@
  * Plugin Name: PhonePe Payment Solutions
  * Plugin URI: https://github.com/PhonePe/
  * Description: Using this plugin you can accept payments through PhonePe. After activating this plugin, you can see the PhonePe option linked to the checkout page of woocommerce site. On configuring with the provided Merchant credentials, you can enable this plugin in Preprod/Prod environment.
- * Version: 3.0.1
+ * Version: 3.0.2
  * Author: PhonePe
- * Requires PHP: 5.6
+ * Requires PHP: 8.2
  */
 
 require_once __DIR__ . '/debug.php';
