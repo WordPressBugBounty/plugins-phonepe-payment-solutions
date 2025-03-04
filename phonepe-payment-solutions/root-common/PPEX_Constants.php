@@ -48,7 +48,7 @@ if (!class_exists('PPEX_Constants')) {
 		const SAVE_USER_ADDRESS_FAILED              = "SAVE_USER_ADDRESS_FAILED";
 		const ORDER_INIT_FAILED                     = "ORDER_INIT_FAILED";
 
-		const MAX_RETRY_COUNT                        = 5;
+		const MAX_RETRY_COUNT                        = 10;
 		const CONNECT_TIMEOUT_IN_SECONDS            = 10;
 		const TIMEOUT_IN_SECONDS                    = 10;
 

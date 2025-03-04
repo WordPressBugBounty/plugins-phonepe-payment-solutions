@@ -320,7 +320,7 @@ class PPEX_WC_PG_V2_Client implements PPEX_PG_Interface {
 				}
 
 				sleep($backoff);
-				$backoff = $backoff * 2 + 1;
+				$backoff = $backoff * 2;
 			} catch (Exception $exception) {
 				ppLogError(json_encode($exception));
 			}
