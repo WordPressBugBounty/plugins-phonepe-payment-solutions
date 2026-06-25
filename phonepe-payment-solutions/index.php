@@ -4,7 +4,7 @@
  * Plugin Name: PhonePe Payment Solutions
  * Plugin URI: https://github.com/PhonePe/
  * Description: Using this plugin you can accept payments through PhonePe. After activating this plugin, you can see the PhonePe option linked to the checkout page of woocommerce site. On configuring with the provided Merchant credentials, you can enable this plugin in Preprod/Prod environment.
- * Version: 3.0.4
+ * Version: 3.1.0
  * 3.0.3
  * Author: PhonePe
  * Requires PHP: 8.2
@@ -684,7 +684,16 @@ function ppex_woocommerce_phonepe_init() {
   function handle_callback() {
 		$wc_phonepe = new WC_PhonePe();
 
-		$merchant_id = $wc_phonepe->get_merchant_context()->get_merchant_id();
+		// Fix 3: Reject v1 callbacks for stores configured with Client Id + API Key (v2 flow).
+		// Those stores have no Salt Key, making v1 checksum validation impossible.
+		// Their callbacks are delivered to /wp-phonepe/v2/callback instead.
+		$phonepe_settings = get_option('woocommerce_phonepe_settings');
+		$is_v2_merchant = isset($phonepe_settings['clientSecret']) && !empty($phonepe_settings['clientSecret']);
+		if ($is_v2_merchant) {
+			ppLogError("V1 callback rejected: store is configured with Client Id + API Key (v2). Callbacks must target /wp-phonepe/v2/callback.");
+			return new WP_REST_Response(['error' => 'This callback endpoint is not supported for your payment configuration.'], 400);
+		}
+
 		$merchant_key = $wc_phonepe->get_merchant_context()->get_salt_key();
 		$key_index = $wc_phonepe->get_merchant_context()->get_salt_index();
 		$payload = file_get_contents('php://input');
@@ -692,6 +701,13 @@ function ppex_woocommerce_phonepe_init() {
 		$payload = json_decode($payload, true);
 		$decoded_payload = $payload['response'];
 		$ppex_pg_callback = $wc_phonepe->get_network_manager()->handle_callback($decoded_payload, $headers, $merchant_key, $key_index);
+
+		// Fix 4: Verify the callback was successfully authenticated before processing.
+		// handle_callback() returns null on any failure (empty key, bad checksum).
+		if (!($ppex_pg_callback instanceof PPEX_PG_Callback)) {
+			ppLogError("V1 callback aborted: signature validation failed or Salt Key is not configured.");
+			return new WP_REST_Response(['error' => 'Invalid callback'], 400);
+		}
 
 		$wc_phonepe->get_wc_b2b_pg_client()->handle_callback_response($ppex_pg_callback);
   }

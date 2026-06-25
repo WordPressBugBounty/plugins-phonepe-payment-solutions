@@ -2,6 +2,8 @@
 
 use PhonePe\common\exceptions\PhonePeException;
 use PhonePe\payments\v2\models\request\builders\StandardCheckoutPayRequestBuilder;
+use PhonePe\payments\v2\models\request\CustomerDetails;
+use PhonePe\payments\v2\models\request\PrefillUserLoginDetails;
 use PhonePe\payments\v2\standardCheckout\StandardCheckoutClient;
 
 class PPEX_WC_PG_V2_Client implements PPEX_PG_Interface {
@@ -9,6 +11,8 @@ class PPEX_WC_PG_V2_Client implements PPEX_PG_Interface {
 	private $standard_checkout_client;
 	private $plugin_context;
 	private $pg_v2_event_manager;
+	private int $redirect_page_id = 0;
+	private array $msg = ['class' => '', 'message' => ''];
 
 	public function __construct($standard_checkout_client, $plugin_context) {
 		$this->standard_checkout_client = $standard_checkout_client;
@@ -50,7 +54,7 @@ class PPEX_WC_PG_V2_Client implements PPEX_PG_Interface {
 			try {
 				$this->standard_checkout_client->sendEvent($event);
 			} catch (Exception $exception) {
-				ppLogError(json_encode($exception));
+				ppLogException($exception);
 			}
 
 			// 4. Handle the response.
@@ -80,6 +84,15 @@ class PPEX_WC_PG_V2_Client implements PPEX_PG_Interface {
 		} else {
 			$order = new woocommerce_order($wc_order_id);
 		}
+		$billing_phone = $order->get_billing_phone();
+        $billing_phone = !empty($billing_phone) ? preg_replace('/\s+|-/', '', $billing_phone) : null;
+        $billing_email = $order->get_billing_email();
+        $billing_email = !empty($billing_email) ? sanitize_email($billing_email) : null;
+
+        $first_name    = $order->get_billing_first_name();
+        $last_name     = $order->get_billing_last_name();
+        $full_name     = trim($first_name . ' ' . $last_name);
+        $full_name     = !empty($full_name) ? sanitize_text_field($full_name) : null;
 
 		$order->set_payment_method_title(PPEX_PG_Constants::PHONEPE_PG_ID);
 		$order->set_payment_method(PPEX_PG_Constants::PHONEPE_PG_TITLE);
@@ -103,7 +116,7 @@ class PPEX_WC_PG_V2_Client implements PPEX_PG_Interface {
 		try {
 			$this->standard_checkout_client->sendEvent($event);
 		} catch (Exception $exception) {
-			ppLogError(json_encode($exception));
+			ppLogException($exception);
 		}
 
 		try {
@@ -111,14 +124,17 @@ class PPEX_WC_PG_V2_Client implements PPEX_PG_Interface {
 				->merchantOrderId($merchant_order_id)
 				->amount($amount_in_paisa)
 				->redirectUrl($redirect_url)
+				->customerDetails(new CustomerDetails($full_name, $billing_email, $billing_phone))
+				->prefillUserLoginDetails(new PrefillUserLoginDetails($billing_phone))
 				->message("WooCommerce PhonePe PG Plugin")
 				->build();
+
+			ppLogInfo("[PhonePe Pay] Initiating pay | merchant_order_id: " . $merchant_order_id . " | amount_paisa: " . $amount_in_paisa . " | env: " . $this->plugin_context->get_environment());
 
 			try {
 				$standard_checkout_pay_response = $this->standard_checkout_client->pay($standard_checkout_pay_request);
 			} catch (PhonePeException $exception) {
-				ppLogError("Exception in pay call");
-				ppLogError(json_encode($exception));
+				ppLogError("[PhonePe Pay] PhonePeException in pay() | code: " . $exception->getCode() . " | message: " . $exception->getMessage() . " | data: " . json_encode($exception->getData()));
 				switch ($exception->getCode()) {
 					case PPEX_PG_Constants::INTERNAL_SECURITY_BLOCK_1:
 						if ($exception->getData()['Transacting_URL'] != null && $exception->getData()['Onboarding_URL'] != null) {
@@ -206,7 +222,7 @@ class PPEX_WC_PG_V2_Client implements PPEX_PG_Interface {
 			try {
 				$this->standard_checkout_client->sendEvent($event);
 			} catch (Exception $exception) {
-				ppLogError(json_encode($exception));
+				ppLogException($exception);
 				$event->data["code"] = $exception->getCode();
 				$event->data["message"] = $exception->getMessage();
 			}
@@ -216,7 +232,7 @@ class PPEX_WC_PG_V2_Client implements PPEX_PG_Interface {
 			try {
 				$this->standard_checkout_client->sendEvent($event);
 			} catch (Exception $exception) {
-				ppLogError(json_encode($exception));
+				ppLogException($exception);
 			}
 
 			// Schedule the FIRST background status check using Action Scheduler.
@@ -232,7 +248,7 @@ class PPEX_WC_PG_V2_Client implements PPEX_PG_Interface {
 				"merchant_order_id" => $merchant_order_id,
 			);
 		} catch (Exception $exception) {
-			ppLogError(json_encode($exception));
+			ppLogException($exception);
 		}
 	}
 	public function render_payment_ui($wc_order_id) {
@@ -290,14 +306,14 @@ class PPEX_WC_PG_V2_Client implements PPEX_PG_Interface {
 		try {
 			$this->standard_checkout_client->sendEvent($event);
 		} catch (Exception $exception) {
-			ppLogError(json_encode($exception));
+			ppLogException($exception);
 		}
 	}
 	public function handle_callback_response($ppex_pg_v2_callback) {
 		try {
 			$response = $this->standard_checkout_client->verifyCallbackResponse($ppex_pg_v2_callback->getHeaders(), $ppex_pg_v2_callback->getPayload(), $ppex_pg_v2_callback->getUsername(), $ppex_pg_v2_callback->getPassword());
 		}catch (Exception $exception) {
-			ppLogError("Callback Verification Failed: " . json_encode($exception));
+			ppLogException($exception, "verifyCallbackResponse()");
             ppLogError("Callback Payload: " . $ppex_pg_v2_callback->getPayload());
 		}
 
@@ -314,7 +330,7 @@ class PPEX_WC_PG_V2_Client implements PPEX_PG_Interface {
 		try {
 			$this->standard_checkout_client->sendEvent($event);
 		} catch (Exception $exception) {
-			ppLogError(json_encode($exception));
+			ppLogException($exception);
 		}
 
 		if ($order && ( ($order->get_status() == PPEX_Constants::PROCESSING) || ( $order->get_status() == PPEX_Constants::COMPLETED) ))  {
@@ -347,7 +363,7 @@ class PPEX_WC_PG_V2_Client implements PPEX_PG_Interface {
 			$state = $response->getState();
 			$this->status_update_for_order($state, $wc_order_id, $merchant_order_id);
 		} catch (exception $exception) {
-			ppLogError(json_encode($exception));
+			ppLogException($exception);
 		}
 	}
 
@@ -381,13 +397,13 @@ class PPEX_WC_PG_V2_Client implements PPEX_PG_Interface {
 				try {
 					$this->standard_checkout_client->sendEvent($event);
 				} catch (Exception $exception) {
-					ppLogError(json_encode($exception));
+					ppLogException($exception);
 				}
 
 				sleep($backoff);
 				$backoff = $backoff * 2;
 			} catch (Exception $exception) {
-				ppLogError(json_encode($exception));
+				ppLogException($exception);
 			}
 		} while (($response->getState() == PPEX_PG_Constants::PG_V2_PENDING || $response->getState() == PPEX_Constants::SERVER_ERROR) && ($retry_counter < PPEX_Constants::MAX_RETRY_COUNT));
 
@@ -435,7 +451,7 @@ class PPEX_WC_PG_V2_Client implements PPEX_PG_Interface {
 		try {
 			$this->standard_checkout_client->sendEvent($event);
 		} catch (Exception $exception) {
-			ppLogError(json_encode($exception));
+			ppLogException($exception);
 		}
 
 		exit;
@@ -449,7 +465,7 @@ class PPEX_WC_PG_V2_Client implements PPEX_PG_Interface {
 		if ($order == false) return;
 
 		// order marked completed will not be modified by status check or callback
-		if ($order->status == 'completed' || $order->status == 'processing') {
+		if ($order->get_status() == 'completed' || $order->get_status() == 'processing') {
 			return;
 		}
 
@@ -460,7 +476,7 @@ class PPEX_WC_PG_V2_Client implements PPEX_PG_Interface {
 			$order->add_order_note("PhonePe Payment Solutions: Your payment is successful - merchant transaction id: " . $merchant_transaction_id);
 			if ($woocommerce->cart) $woocommerce->cart->empty_cart();
 			return;
-		} else if ($type == PPEX_PG_Constants::CHECKOUT_ORDER_FAILED || PPEX_PG_Constants::PG_V2_FAILED) {
+		} else if ($type == PPEX_PG_Constants::CHECKOUT_ORDER_FAILED || $type == PPEX_PG_Constants::PG_V2_FAILED) {
 			$this->msg['class'] = 'error';
 			$this->msg['message'] = $msg;
 			$order->update_status('failed');

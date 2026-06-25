@@ -21,17 +21,29 @@ if (!class_exists('PPEX_WC_Http_Client_V2')) {
 				'headers'     => $modified_headers,
 			);
 
+			ppLogInfo("[PhonePe HTTP] GET " . $url);
 			$response = wp_remote_get($url, $args);
+
+			if (is_wp_error($response)) {
+				$wp_error_msg = $response->get_error_message();
+				$wp_error_code = $response->get_error_code();
+				ppLogError("[PhonePe HTTP] GET network error | url: " . $url . " | wp_error_code: " . $wp_error_code . " | wp_error_message: " . $wp_error_msg);
+				throw new PhonePeException("Network error: " . $wp_error_msg, 0, "NETWORK_ERROR", null);
+			}
+
 			$http_code = wp_remote_retrieve_response_code($response);
-			$body = json_decode(wp_remote_retrieve_body($response), true);
+			$raw_body = wp_remote_retrieve_body($response);
+			$body = json_decode($raw_body, true);
+			ppLogInfo("[PhonePe HTTP] GET response | url: " . $url . " | http_code: " . $http_code . " | body: " . $raw_body);
+
 			$httpResponse = new HttpResponse();
 			$httpResponse->setResponse(json_encode($body));
 
 			if ($http_code == 200)
 				return $httpResponse;
 			else {
-				ppLogError("GET issue " . json_encode($body) . " url: " . $url);
-				throw new PhonePeException($body['message'], $http_code, $body['code'], $body['data']);
+				ppLogError("[PhonePe HTTP] GET failed | url: " . $url . " | http_code: " . $http_code . " | body: " . $raw_body);
+				throw new PhonePeException($body['message'] ?? "Unknown error", $http_code, $body['code'] ?? null, $body['data'] ?? null);
 			}
 		}
 
@@ -41,10 +53,17 @@ if (!class_exists('PPEX_WC_Http_Client_V2')) {
 		 */
 
 		public static function postRequest($url, $body, $headers) {
-			if(strpos($url, "/identity-manager/v1/oauth/token") !== false){
+			$is_oauth = strpos($url, "/oauth/token") !== false;
+			if ($is_oauth) {
 				$modified_headers = $headers;
-			}else {
+			} else {
 				$modified_headers = self::modifyMandatoryHeaders($headers);
+				// UAT sandbox rejects "metaInfo":[] (empty JSON array) but PROD accepts it.
+				// The SDK serializes an empty MetaInfo as [] instead of {}.
+				// Replace any empty metaInfo array with an empty object before sending.
+				if (is_string($body)) {
+					$body = str_replace('"metaInfo":[]', '"metaInfo":{}', $body);
+				}
 			}
 
 			$args = array(
@@ -52,19 +71,29 @@ if (!class_exists('PPEX_WC_Http_Client_V2')) {
 				'body'        => $body,
 			);
 
+			ppLogInfo("[PhonePe HTTP] POST " . $url . ($is_oauth ? " [oauth]" : ""));
 			$response = wp_remote_post($url, $args);
 
+			if (is_wp_error($response)) {
+				$wp_error_msg = $response->get_error_message();
+				$wp_error_code = $response->get_error_code();
+				ppLogError("[PhonePe HTTP] POST network error | url: " . $url . " | wp_error_code: " . $wp_error_code . " | wp_error_message: " . $wp_error_msg);
+				throw new PhonePeException("Network error: " . $wp_error_msg, 0, "NETWORK_ERROR", null);
+			}
+
 			$http_code = wp_remote_retrieve_response_code($response);
-			$body = json_decode(wp_remote_retrieve_body($response), true);
+			$raw_body = wp_remote_retrieve_body($response);
+			$body = json_decode($raw_body, true);
+			ppLogInfo("[PhonePe HTTP] POST response | url: " . $url . " | http_code: " . $http_code . " | body: " . $raw_body);
+
 			$httpResponse = new HttpResponse();
 			$httpResponse->setResponse(json_encode($body));
-
 
 			if ($http_code == 200)
 				return $httpResponse;
 			else {
-				ppLogError("POST issue " . json_encode($body) . " url: " . $url);
-				throw new PhonePeException($body['message'], $http_code, $body['code'], $body['data']);
+				ppLogError("[PhonePe HTTP] POST failed | url: " . $url . " | http_code: " . $http_code . " | body: " . $raw_body);
+				throw new PhonePeException($body['message'] ?? "Unknown error", $http_code, $body['code'] ?? null, $body['data'] ?? null);
 			}
 		}
 
